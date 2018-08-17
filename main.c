@@ -483,8 +483,7 @@ int main(int argc, char* argv[]) {
                     
                     mkdir("DUMP", 0777);
                     
-                    strcat(file_path, "DUMP/");
-                    strcat(file_path, "sec");
+                    strcat(file_path, "DUMP/sec");
                     sprintf(file_path + 8, "%u", current_section);
                     strcat(file_path, "obj");
                     sprintf(file_path + 12, "%u", current_object);
