@@ -469,9 +469,6 @@ int main(int argc, char* argv[]) {
         //read all other sections
         while(read_section(in, &sec)) {
             
-            //TODO: read all objects in section
-            //      probably done?
-            //TODO: decompress section is all wrong!!!
             //read all objects in section
             while(sec.current_object < sec.uncompressed_length) {
                 
