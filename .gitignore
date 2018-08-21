@@ -1,6 +1,8 @@
 #utility
 *.m3g
 .DS_Store
+m3g-reader
+DUMP/
 
 # Prerequisites
 *.d

@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
+#include <limits.h>
+#include <sys/stat.h>
 
 #include <zlib.h>
 
@@ -74,6 +77,13 @@ static const char* OBJECT_TYPES[] = {
     "WORLD"
     //255 - external references
 };
+
+u32 fsize(FILE* in) {
+    fseek(in, 0, SEEK_END);
+    u32 s = ftell(in);
+    fseek(in, 0, SEEK_SET);
+    return s;
+}
 
 //fishlabs encryption/decryption
 void fish_crypt(char* buffer, u32 size) {
