@@ -5,7 +5,7 @@
 
 #include <zlib.h>
 
-#include "Silent.h"
+#include "LinkedList.h"
 #include "types.h"
 
 #define OBJ_TYPE_HEADER     0x00
@@ -689,6 +689,8 @@ int main(int argc, char* argv[]) {
                     
                 }
                 
+                //TODO: there can be multiple triangle strip arrays in one section
+                //      fix dis shit
                 //save faces
                 for(u32 i = 0; i < sizeLL(objects); i++) {
                     
