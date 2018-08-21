@@ -16,6 +16,7 @@
 #define OBJ_TYPE_IMAGE2D    0x0A
 #define OBJ_TYPE_TSA        0x0B
 #define OBJ_TYPE_MATERIAL   0x0D
+#define OBJ_TYPE_MESH       0x0E
 #define OBJ_TYPE_TEXT2D     0x11
 #define OBJ_TYPE_VARRAY     0x14
 #define OBJ_TYPE_VBUFFER    0x15
@@ -24,15 +25,27 @@
 
 #define BUFFER_SIZE         32768
 
-#define OBJ_CONVERT
-
 static bool decrypting = false;
 static bool decrypt    = false;
 static bool dumping    = false;
+static bool create_obj = false;
 static bool printing   = false;
 
 //magic header
-static const u8 HEADER[] = { 0xAB, 0x4A, 0x53, 0x52, 0x31, 0x38, 0x34, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A };
+static const u8 HEADER[] = {
+    0xAB,
+    0x4A,
+    0x53,
+    0x52,
+    0x31,
+    0x38,
+    0x34,
+    0xBB,
+    0x0D,
+    0x0A,
+    0x1A,
+    0x0A
+};
 
 //object types
 static const char* OBJECT_TYPES[] = {
@@ -133,6 +146,11 @@ u32 decompress_section(FILE* in, Section* source) {
 //read section
 bool read_section(FILE* in, Section* sec) {
     
+    if(sec->object_array != NULL) {
+        free(sec->object_array);
+        sec->object_array = NULL;
+    }
+    
     //read section
     if(fread(&sec->compression, sizeof(u8), 1, in) == 0) {
         return false;
@@ -160,44 +178,26 @@ bool read_section(FILE* in, Section* sec) {
 }
 
 //read object
-void read_object(Object* obj, Section* sec) {
-    //set data offset
-    //fseek(in, sec->current_object, SEEK_SET);
+void read_object(Object* obj, Section* sec, u32* num_object) {
     
+    //read object
     obj->type   = *(u8*)(sec->object_array + sec->current_object);
     obj->length = *(u32*)(sec->object_array + sec->current_object + 1);
     obj->data   = (u8*)(sec->object_array + sec->current_object + 5);
     
-    //read object
-    //fread(&obj->type, sizeof(u8), 1, in);
-    //fread(&obj->length, sizeof(u32), 1, in);
-    //obj->data = malloc(obj->length);
-    //fread(obj->data, obj->length, 1, in);
-    
     //next object
     sec->current_object = sec->current_object + 5 + obj->length;
     
-    //return file data pointer
-    //fseek(in, original_offset, SEEK_SET);
+    printf("\n    /*OBJECT [%u]*/: [type: %s] [length: %06u]\n", *num_object, OBJECT_TYPES[obj->type], obj->length);
     
-    
-    printf("\n    /*OBJECT*/: [type: %s] [length: %06u]\n",
-           OBJECT_TYPES[obj->type], obj->length);
+    *num_object = *num_object + 1;
 }
 
-//print group object
-/*void print_group_object(Object* obj) {
-    
-    for(u32 i = 0; i < obj->length; i++) {
-        printf("[%s%x], ", *(obj->data + i) < 0xf ? "0x0" : "0x" , *(obj->data + i));
-        if(i != 0 && i % 8 == 0) {
-            printf("\n");
-        }
-    }
-    
-}*/
-
+//print object
 void print_object(Object* obj) {
+    
+    bool has_general_transform, has_component_transform, has_alignment;
+    u32  data_offset;
     
     switch(obj->type) {
             
@@ -217,8 +217,6 @@ void print_object(Object* obj) {
             break;
             
         case OBJ_TYPE_VARRAY:
-            
-            //TODO: print different types
             
             printf("\n        /*VERTEX ARRAY OBJECT*/: [component size: 0x%02x] [component count: 0x%02x] [encoding: 0x%02x] [vertex count: %hu]\n", *(obj->data + 12), *(obj->data + 13), *(obj->data + 14), *(u16*)(obj->data + 15));
             u8 comp_size   = *(obj->data + 12);
@@ -256,13 +254,13 @@ void print_object(Object* obj) {
 #ifdef OBJ_CONVERT
                             printf("%f ", (float)*(s16*)(data + i * comp_count + j * sizeof(s16)) / 100.0f);
 #else
-                            printf("[%06i]", *(s16*)(data + i * comp_count + j * sizeof(s16)));
+                            printf("[%06i]", *(s16*)(data + (i * comp_count * sizeof(s16)) + (j * sizeof(s16))));
 #endif
                         } else if(encoding == 1) {
 #ifdef OBJ_CONVERT
                             printf("%f ", (float)*(s16*)(data + i * comp_count + j * sizeof(s16)) / 100.0f);
 #else
-                            printf("[D %06i]", *(s16*)(data + i * comp_count + j * sizeof(s16)));
+                            printf("[D %06i]", *(s16*)(data + (i * comp_count * sizeof(s16)) + (j * sizeof(s16))));
 #endif
                         } else {
                             
@@ -299,8 +297,25 @@ void print_object(Object* obj) {
                 case 2:
                     printf("[start index: %hu]\n", *(u16*)(obj->data + 13));
                     break;
+                case 128:
+                    printf("\n");
+                    for(u32 i = 13; i < obj->length; i += sizeof(u32)) {
+                        printf("            index %03lu: [%03u]\n", (i - 13) / sizeof(u32), *(u32*)(obj->data + i));
+                    }
+                    break;
+                case 129:
+                    printf("\n");
+                    for(u32 i = 13; i < obj->length; i += sizeof(u8)) {
+                        printf("            index %03lu: [0x%01x]\n", (i - 13) / sizeof(u8), *(obj->data + i));
+                    }
+                    break;
+                case 130:
+                    printf("\n");
+                    for(u32 i = 13; i < obj->length; i += sizeof(u16)) {
+                        printf("            index %03lu: [%03u]\n", (i - 13) / sizeof(u16), *(u16*)(obj->data + i));
+                    }
+                    break;
                 default:
-                    printf("hol up!\n");
                     break;
             }
             break;
@@ -368,28 +383,76 @@ void print_object(Object* obj) {
             
             break;
             
+        case OBJ_TYPE_MESH:
+            
+            has_component_transform = *(obj->data + 12);
+            has_general_transform   = has_component_transform ? *(obj->data + 53) : *(obj->data + 13);
+            
+            printf("\n        /*MESH*/: [has component transform: %s] [has general transform: %s] ", has_component_transform ? "true" : "false", has_general_transform ? "true" : "false");
+            
+            printf("\"there is also some shit that is not important\" ");
+            
+            has_alignment           = has_component_transform ? (has_general_transform ? *(obj->data + 118 + 7) : *(obj->data + 54 + 7)) : (has_general_transform ? *(obj->data + 78 + 7) : *(obj->data + 14 + 7));
+            
+            data_offset = 15 + 7 + has_component_transform * 40 + has_general_transform * 64 + has_alignment * 10;
+            
+            printf("[has alignment: %s] [vertex buffer: %uI] [submesh count: %u]\n", has_alignment ? "true" : "false", *(u32*)(obj->data + data_offset), *(u32*)(obj->data + data_offset + sizeof(u32)));
+            
+            for(u32 i = 0; i < *(u32*)(obj->data + data_offset + sizeof(u32)); i += sizeof(SubMesh)) {
+                printf("            /*SUBMESH*/: [index buffer: %uI] [appearance: %uI]\n", *(u32*)(obj->data + data_offset + sizeof(u32) + i), *(u32*)(obj->data + data_offset + sizeof(u32) + i + 4));
+            }
+            
+            break;
+            
+        case OBJ_TYPE_GROUP:
+            
+            has_component_transform = *(obj->data + 12);
+            has_general_transform   = has_component_transform ? *(obj->data + 53) : *(obj->data + 13);
+            
+            printf("\n        /*GROUP*/: [has component transform: %s] [has general transform: %s] ", has_component_transform ? "true" : "false", has_general_transform ? "true" : "false");
+            
+            printf("\"there is also some shit that is not important\" ");
+            
+            has_alignment           = has_component_transform ? (has_general_transform ? *(obj->data + 118 + 7) : *(obj->data + 54 + 7)) : (has_general_transform ? *(obj->data + 78 + 7) : *(obj->data + 14 + 7));
+            
+            data_offset = 15 + 7 + has_component_transform * 40 + has_general_transform * 64 + has_alignment * 10;
+            
+            printf("[has alignment: %s]\n", has_alignment ? "true" : "false");
+            
+            for(u32 i = data_offset; i < obj->length; i += sizeof(ObjectIndex)) {
+                
+                printf("            child %03lu: [%uI]\n", (i - data_offset) / sizeof(ObjectIndex), *(ObjectIndex*)(obj->data + i));
+            }
+            
+            break;
+            
         default:
             //printf("Unimplemented object type: [%s]\n", OBJECT_TYPES[obj->type]);
             break;
     }
 }
 
+
+
 //main program
 int main(int argc, char* argv[]) {
     
-    if(argc < 2) { printf("usage: prog [input] [switches]\n"); return 1; }
+    if(argc < 2) { printf("usage: m3g-reader [input] [switches]\n"); return 1; }
     
     if(argc > 2) {
+        
         for(u32 i = 2; i < argc; i++) {
             
             if(!strcmp(argv[i], "-decrypting")) {
                 decrypting = true;
             } else if(!strcmp(argv[i], "-dumping")) {
-                dumping = true;
+                dumping    = true;
             } else if(!strcmp(argv[i], "-printing")) {
-                printing = true;
+                printing   = true;
             } else if(!strcmp(argv[i], "-decrypt")) {
-                decrypt = true;
+                decrypt    = true;
+            } else if(!strcmp(argv[i], "-obj")) {
+                create_obj = true;
             }
         }
     }
@@ -436,6 +499,8 @@ int main(int argc, char* argv[]) {
         //allocate buffer
         u8* buffer = malloc(BUFFER_SIZE);
         
+        LinkedList* objects = newLL();
+        
         //check header
         fread(buffer, sizeof(HEADER), sizeof(u8), in);
         
@@ -447,14 +512,19 @@ int main(int argc, char* argv[]) {
         }
         
         //buffers
-        Section sec;
+        Section sec; sec.object_array = NULL;
         Object  obj;
+        
+        //utility
+        u32 current_section = 1;
+        u32 current_object  = 0;
+        u32 num_object      = 1;
         
         //read section 0 - file header object
         read_section(in, &sec);
         
         //read header object
-        read_object(&obj, &sec);
+        read_object(&obj, &sec, &num_object);
         
         if(obj.type == OBJ_TYPE_HEADER) {
             //print header object
@@ -463,16 +533,18 @@ int main(int argc, char* argv[]) {
             printf("Wait what!?\n");
         }
         
-        u32 current_section = 1;
-        u32 current_object  = 0;
-        
         //read all other sections
         while(read_section(in, &sec)) {
             
             //read all objects in section
             while(sec.current_object < sec.uncompressed_length) {
                 
-                read_object(&obj, &sec);
+                read_object(&obj, &sec, &num_object);
+                
+                //push the object into the list
+                Object* heap_obj = malloc(sizeof(Object));
+                memcpy(heap_obj, &obj, sizeof(Object));
+                pushLL(objects, heap_obj);
                 
                 //print dat shit
                 if(printing) { print_object(&obj); }
@@ -503,14 +575,237 @@ int main(int argc, char* argv[]) {
                 
             }
             
+            //dump object file
+            if(create_obj) {
+                
+                //create file
+                char path[16] = { 0 };
+                strcpy(path, "object");
+                sprintf(path + 6, "%u", current_section);
+                strcat(path, ".obj");
+                FILE* obj_out = fopen(path, "wb");
+                
+                if(obj_out == NULL) { printf("WACC!\n"); }
+                
+                //write header
+                fwrite("o mesh\n", 1, 7, obj_out);
+                
+                //save vertices and normals
+                for(u32 i = 0; i < sizeLL(objects); i++) {
+                    
+                    Object* o = get_valueLL(objects, i);
+                    
+                    if(o->type == OBJ_TYPE_VBUFFER) {
+                        
+                        //save vertices
+                        Object* positions = get_valueLL(objects, *(u32*)(o->data + 16) - 2);
+                        
+                        u8 comp_size      = *(positions->data + 12);
+                        u8 comp_count     = *(positions->data + 13);
+                        u8 encoding       = *(positions->data + 14);
+                        u16 vert_count    = *(u16*)(positions->data + 15);
+                        void* data        = positions->data + 17;
+                        
+                        //iterate through vertices
+                        for(u32 j = 0; j < vert_count; j++) {
+
+                            fwrite("v ", 1, 2, obj_out);
+                            
+                            for(u32 k = 0; k < comp_count; k++) {
+                                
+                                if(comp_size == 1) {
+                                    
+                                    printf("object dumping warning: vertex positions are byte sized?, ignoring\n");
+                                    
+                                } else {
+                                    
+                                    if(encoding == 0) {
+                                        
+                                        char coord[32] = { 0 };
+                                        sprintf(coord, "%i ", *(s16*)(data + j * comp_count * sizeof(s16) + k * sizeof(s16)));
+                                        
+                                        fwrite(coord, 1, strlen(coord), obj_out);
+                                        
+                                    } else if(encoding == 1) {
+                                        
+                                        printf("object dumping warning: vertex positions are deltas, ignoring\n");
+                                        
+                                    } else {
+                                        
+                                        printf("Error encoding 0x%x\n", encoding);
+                                    }
+                                }
+                            }
+                            
+                            fwrite("\n", 1, 1, obj_out);
+                            
+                        }
+                        
+                        //save normals
+                        Object* normals  = get_valueLL(objects, *(u32*)(o->data + 36) - 2);
+                        
+                        comp_size        = *(normals->data + 12);
+                        comp_count       = *(normals->data + 13);
+                        encoding         = *(normals->data + 14);
+                        vert_count       = *(u16*)(normals->data + 15);
+                        data             = normals->data + 17;
+                        
+                        for(u32 j = 0; j < vert_count; j++) {
+                            
+                            fwrite("vn ", 1, 3, obj_out);
+                            
+                            for(u32 k = 0; k < comp_count; k++) {
+                                
+                                if(comp_size == 1) {
+                                    
+                                    if(encoding == 0) {
+                                        
+                                        char coord[16] = { 0 };
+                                        sprintf(coord, "%f ", (float)*(u8*)(data + j * comp_count + k) / 255.0f);
+                                        
+                                        fwrite(coord, 1, strlen(coord), obj_out);
+                                        
+                                    } else if(encoding == 1) {
+                                        
+                                        printf("object dumping warning: vertex normals are deltas, ignoring\n");
+                                        
+                                    } else {
+                                        
+                                        printf("Error encoding 0x%x\n", encoding);
+                                    }
+                                    
+                                } else {
+                                    
+                                    printf("object dumping warning: vertex positions are deltas, ignoring\n");
+                                }
+                            }
+                            
+                            fwrite("\n", 1, 1, obj_out);
+                            
+                        }
+                        
+                        break;
+                    }
+                    
+                }
+                
+                //save faces
+                for(u32 i = 0; i < sizeLL(objects); i++) {
+                    
+                    Object* o = get_valueLL(objects, i);
+                    
+                    if(o->type == OBJ_TYPE_TSA) {
+                        
+                        //save faces
+                        //check if the encoding is right
+                        if(*(o->data + 12) == 0x80) {
+                            
+                            bool oddity = false;
+                            
+                            //skip the first index cause it is mostly out of bounds
+                            //don't know the meaning of the first one
+                            //actually let's keep it
+                            //let's not
+                            //TODO: figure out this shit...
+                            //yo I finally fucken got it! :D
+                            //it's indicating size of dem faces :D :D :D
+                            u32 indicies_length = *(u32*)(o->data + 13);
+                            
+                            u8* strips_lengths_array  = (o->data + 17 + indicies_length * sizeof(u32) + sizeof(u32));
+                            
+                            u32 strips_num      = (o->length - 14) / sizeof(u32) - indicies_length - 1;
+                            
+                            u32 offset_index    = 0;
+
+                            for(u32 j = 0; j < strips_num; j++) {
+                                
+                                oddity = false;
+                                
+                                //create n - 2 faces
+                                for(u32 k = 0; k < *(u32*)(strips_lengths_array + j * sizeof(u32)) - 2; k++) {
+                                    
+                                    //odd face
+                                    if(oddity) {
+                                        
+                                        char coord[40] = { 0 };
+                                        sprintf(coord, "f %u %u %u\n",
+                                                *(u32*)(o->data + 17 + offset_index) + 1,
+                                                *(u32*)(o->data + 17 + offset_index + 4) + 1,
+                                                *(u32*)(o->data + 17 + offset_index + 8) + 1);
+                                        
+                                        fwrite(coord, 1, strlen(coord), obj_out);
+                                        
+                                    //even face
+                                    } else {
+                                        
+                                        char coord[40] = { 0 };
+                                        sprintf(coord, "f %u %u %u\n",
+                                                *(u32*)(o->data + 17 + offset_index + 4) + 1,
+                                                *(u32*)(o->data + 17 + offset_index) + 1,
+                                                *(u32*)(o->data + 17 + offset_index + 8) + 1);
+                                        
+                                        fwrite(coord, 1, strlen(coord), obj_out);
+                                        
+                                    }
+                                    
+                                    oddity = !oddity;
+                                    
+                                    offset_index += sizeof(u32);
+                                    
+                                }
+                                
+                                //because we created n - 2 faces we need the offset increase by two
+                                offset_index += sizeof(u32) * 2;
+                                
+                            }
+                            
+                            //TODO: for each strip
+                            /*for(u32 j = 17; j < ; j += sizeof(u32)) {
+                                
+                                //odd face
+                                if(oddity) {
+                                    
+                                    char coord[40] = { 0 };
+                                    sprintf(coord, "f %u %u %u\n", *(u32*)(o->data + j), *(u32*)(o->data + j + 4), *(u32*)(o->data + j + 8));
+                                    
+                                    fwrite(coord, 1, strlen(coord), obj_out);
+                                
+                                //even face
+                                } else {
+                                    
+                                    char coord[40] = { 0 };
+                                    sprintf(coord, "f %u %u %u\n", *(u32*)(o->data + j + 4), *(u32*)(o->data + j), *(u32*)(o->data + j + 8));
+                                    
+                                    fwrite(coord, 1, strlen(coord), obj_out);
+                                    
+                                }
+                                
+                                oddity = !oddity;
+                                
+                            }*/
+                            
+                        } else {
+                            
+                            printf("dumping obj file error: triangle strip array has encoding: 0x%x\n", *(o->data + 12));
+                            
+                        }
+                        
+                        break;
+                    }
+                    
+                }
+                
+                fclose(obj_out);
+            }
+            
             current_section++;
         }
         
-        ESCAPE:
+    ESCAPE:
         
-            fclose(in);
-            free(buffer);
-
+        deleteLL(objects);
+        fclose(in);
+        free(buffer);
     }
 }
 
