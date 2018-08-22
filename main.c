@@ -209,7 +209,7 @@ void read_object(Object* obj, Section* sec, u32* num_object) {
            FNT_BCYAN,
            *num_object,
            FNT_RESET,
-           OBJECT_TYPES[obj->type],
+           obj->type == 0xff ? "EXTERNAL_REFERENCES" : OBJECT_TYPES[obj->type],
            obj->length);
     
     *num_object = *num_object + 1;
@@ -723,6 +723,10 @@ int main(int argc, char* argv[]) {
                     
                 }
                 
+                
+                //T0D0: some faces are missing on some models
+                //      the places are really specific
+                //      lemme do some research
                 //save faces
                 for(u32 i = section_objects_offset; i < sizeLL(objects); i++) {
                     
@@ -736,10 +740,10 @@ int main(int argc, char* argv[]) {
                             
                             bool oddity = false;
                             
-                            //skip the first index cause it is mostly out of bounds
+                            //skip the first fuck cause it is mostly out of bounds
                             //don't know the meaning of the first one
                             //actually let's keep it
-                            //let's not
+                            //actually let's not
                             //TODO: figure out this shit...
                             //yo I finally fucken got it! :D
                             //it's indicating size of dem faces :D :D :D
@@ -792,31 +796,6 @@ int main(int argc, char* argv[]) {
                                 offset_index += sizeof(u32) * 2;
                                 
                             }
-                            
-                            //TODO: for each strip
-                            /*for(u32 j = 17; j < ; j += sizeof(u32)) {
-                                
-                                //odd face
-                                if(oddity) {
-                                    
-                                    char coord[40] = { 0 };
-                                    sprintf(coord, "f %u %u %u\n", *(u32*)(o->data + j), *(u32*)(o->data + j + 4), *(u32*)(o->data + j + 8));
-                                    
-                                    fwrite(coord, 1, strlen(coord), obj_out);
-                                
-                                //even face
-                                } else {
-                                    
-                                    char coord[40] = { 0 };
-                                    sprintf(coord, "f %u %u %u\n", *(u32*)(o->data + j + 4), *(u32*)(o->data + j), *(u32*)(o->data + j + 8));
-                                    
-                                    fwrite(coord, 1, strlen(coord), obj_out);
-                                    
-                                }
-                                
-                                oddity = !oddity;
-                                
-                            }*/
                             
                         } else {
                             
